@@ -72,10 +72,52 @@ if "all_chats" not in st.session_state:
     }
     st.session_state.current_chat_id = first_chat_id
 
-# ---------- SIDEBAR: Chat history list ----------
-with st.sidebar:
-    st.header("💬 Chats")
+# ---------- ZERO-SHOT / ONE-SHOT / FEW-SHOT EXAMPLE BANK ----------
+# These are sample Q&A pairs that show the AI the exact STYLE of answer we want:
+# short, simple, respectful, and always ending with a gentle "verify" reminder.
+# They are NOT saved into the visible chat history — they're only added
+# behind the scenes when we call the API, based on the selected mode.
+EXAMPLE_PAIRS = [
+    (
+        "What are the 5 pillars of Islam?",
+        "The 5 pillars are: 1) Shahada (declaration of faith), 2) Salah (5 daily "
+        "prayers), 3) Zakat (charity), 4) Sawm (fasting in Ramadan), and 5) Hajj "
+        "(pilgrimage to Makkah, if able). (General info — please verify details "
+        "with a trusted scholar or source.)"
+    ),
+    (
+        "Who was Prophet Yusuf (AS)?",
+        "Prophet Yusuf (AS) was the son of Prophet Ya'qub (AS). His story, told in "
+        "Surah Yusuf, covers being betrayed by his brothers, rising to a position "
+        "of trust in Egypt, and eventually being reunited with his family. "
+        "(General summary — please verify exact details with a trusted source.)"
+    ),
+    (
+        "What breaks the fast in Ramadan?",
+        "Generally, eating, drinking, and intimate relations during fasting hours "
+        "break the fast. Some rulings vary by situation (illness, travel, etc.). "
+        "(General info only — for specific situations, please consult a scholar.)"
+    ),
+]
 
+# ---------- SIDEBAR: Prompting mode selector ----------
+with st.sidebar:
+    st.header("🧪 Prompting Mode")
+    prompting_mode = st.radio(
+        "Choose how many examples to show the AI before your question:",
+        ["Zero-shot", "One-shot", "Few-shot"],
+        index=0,
+        help=(
+            "Zero-shot: no examples given.\n"
+            "One-shot: 1 example given.\n"
+            "Few-shot: multiple examples given.\n"
+            "Examples teach the AI the exact style/format to follow."
+        ),
+    )
+    st.caption(f"Currently using: **{prompting_mode}**")
+    st.divider()
+
+    st.header("💬 Chats")
     if st.button("➕ New Chat", use_container_width=True):
         new_id = str(uuid.uuid4())
         st.session_state.all_chats[new_id] = {
@@ -133,9 +175,32 @@ if user_input:
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
             try:
+                # ---- Build the messages we actually SEND to the API ----
+                # This is where zero/one/few-shot examples get injected.
+                # (They are NOT added to current_chat["messages"], so they
+                # never show up in the visible chat UI.)
+                system_msg = current_chat["messages"][0]
+                real_conversation = current_chat["messages"][1:]  # everything after system msg
+
+                if prompting_mode == "Zero-shot":
+                    example_msgs = []  # no examples at all
+                elif prompting_mode == "One-shot":
+                    q, a = EXAMPLE_PAIRS[0]
+                    example_msgs = [
+                        {"role": "user", "content": q},
+                        {"role": "assistant", "content": a},
+                    ]
+                else:  # Few-shot
+                    example_msgs = []
+                    for q, a in EXAMPLE_PAIRS:
+                        example_msgs.append({"role": "user", "content": q})
+                        example_msgs.append({"role": "assistant", "content": a})
+
+                messages_to_send = [system_msg] + example_msgs + real_conversation
+
                 response = client.chat.completions.create(
                     model=MODEL_NAME,
-                    messages=current_chat["messages"],
+                    messages=messages_to_send,
                     max_tokens=300,
                 )
                 ai_reply = response.choices[0].message.content
