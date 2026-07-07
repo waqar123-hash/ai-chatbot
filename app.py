@@ -100,8 +100,22 @@ EXAMPLE_PAIRS = [
     ),
 ]
 
-# ---------- SIDEBAR: Prompting mode selector ----------
+# ---------- SIDEBAR: Who is asking? (Role + Level) ----------
 with st.sidebar:
+    st.header("🙋 Who's Asking?")
+    user_role = st.selectbox(
+        "I am a...",
+        ["Student", "Teacher"],
+        help="Student: simple, easy-to-understand answers.\nTeacher: answers include structure/teaching tips.",
+    )
+    user_level = st.selectbox(
+        "Knowledge Level",
+        ["Beginner", "Intermediate", "Advanced"],
+        help="Beginner: very simple, basic explanation.\nIntermediate: some detail, assumes basic knowledge.\nAdvanced: in-depth, assumes strong prior knowledge.",
+    )
+    st.caption(f"Answering as: **{user_role} ({user_level})**")
+    st.divider()
+
     st.header("🧪 Prompting Mode")
     prompting_mode = st.radio(
         "Choose how many examples to show the AI before your question:",
@@ -182,6 +196,21 @@ if user_input:
                 system_msg = current_chat["messages"][0]
                 real_conversation = current_chat["messages"][1:]  # everything after system msg
 
+                # ---- Adjust behavior based on selected Role + Level ----
+                role_instructions = {
+                    "Student": "The user is a STUDENT. Keep the tone friendly and easy to follow, like explaining to someone learning.",
+                    "Teacher": "The user is a TEACHER. Structure the answer clearly (e.g. short points) and, where useful, add a brief note on how to explain this to others.",
+                }
+                level_instructions = {
+                    "Beginner": "Use very simple words, short sentences, and avoid assuming any prior knowledge.",
+                    "Intermediate": "You may assume basic familiarity with the topic; give a moderate level of detail.",
+                    "Advanced": "You may go into more depth and detail, assuming strong prior knowledge of the topic.",
+                }
+                personalization_msg = {
+                    "role": "system",
+                    "content": role_instructions[user_role] + " " + level_instructions[user_level],
+                }
+
                 if prompting_mode == "Zero-shot":
                     example_msgs = []  # no examples at all
                 elif prompting_mode == "One-shot":
@@ -196,7 +225,7 @@ if user_input:
                         example_msgs.append({"role": "user", "content": q})
                         example_msgs.append({"role": "assistant", "content": a})
 
-                messages_to_send = [system_msg] + example_msgs + real_conversation
+                messages_to_send = [system_msg, personalization_msg] + example_msgs + real_conversation
 
                 response = client.chat.completions.create(
                     model=MODEL_NAME,
